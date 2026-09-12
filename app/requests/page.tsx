@@ -1,4 +1,43 @@
-'use client';
-import Link from 'next/link'; import {useEffect,useState} from 'react'; import {Plus,Users,ArrowLeft,Search} from 'lucide-react';
-type Request={kind:string,detail:string,requirements:{text:string,weight:number}[],notes:string,createdAt:string};
-export default function Requests(){const [req,setReq]=useState<Request|null>(null);const [q,setQ]=useState('');useEffect(()=>{const x=localStorage.getItem('hr_request');if(x)setReq(JSON.parse(x))},[]);return <main className="min-h-screen"><header className="bg-[#09233f] text-white px-6 py-5"><div className="max-w-6xl mx-auto flex justify-between items-center"><div><div className="text-[#d4a72c] font-bold">البنية الاساسية للمقاولات</div><h1 className="text-xl font-bold">طلبات الموارد البشرية</h1></div><Link href="/requests/new" className="btn-gold rounded-xl px-4 py-2 font-bold flex gap-2 items-center"><Plus size={18}/> طلب جديد</Link></div></header><div className="max-w-6xl mx-auto p-6 md:p-10"><div className="relative mb-6"><Search className="absolute right-4 top-3.5 text-slate-400" size={20}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="بحث في الطلبات..." className="w-full border rounded-xl p-3 pr-12"/></div>{req&&(!q||`${req.kind} ${req.detail}`.includes(q))?<Link href="/requests/current" className="card block p-6 hover:border-[#b88618]"><div className="flex flex-col md:flex-row md:items-center justify-between gap-5"><div><div className="flex gap-2 mb-2"><span className="bg-amber-100 text-[#8a6410] px-3 py-1 rounded-full text-xs font-bold">{req.kind}</span><span className="bg-slate-100 px-3 py-1 rounded-full text-xs">مفتوح</span></div><h2 className="text-xl font-bold text-[#09233f]">{req.detail}</h2><p className="text-sm text-slate-500 mt-2">{req.requirements.length} متطلبات • تم إنشاء الطلب</p></div><div className="flex items-center gap-3 text-[#b88618] font-bold">إدارة الطلب <ArrowLeft size={18}/></div></div></Link>:<div className="card p-12 text-center text-slate-500">لا توجد طلبات حالياً. أنشئ أول طلب للبدء.</div>}<div className="mt-8 grid sm:grid-cols-3 gap-4"><div className="card p-5"><div className="text-slate-500 text-sm">إجمالي الطلبات</div><div className="text-3xl font-bold text-[#09233f] mt-2">{req?1:0}</div></div><div className="card p-5"><div className="text-slate-500 text-sm">المرشحون</div><div className="text-3xl font-bold text-[#09233f] mt-2">{req?JSON.parse(localStorage.getItem('hr_candidates')||'[]').length:0}</div></div><div className="card p-5"><div className="text-slate-500 text-sm">متطلبات الطلب</div><div className="text-3xl font-bold text-[#09233f] mt-2">{req?.requirements.length||0}</div></div></div></div></main>}
+'use client'
+
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { Plus, ArrowLeft, Search, RefreshCw } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+
+type Request = { id: string; request_type: string; exact_type: string; status: string; created_at: string }
+
+type Candidate = { id: string; request_id: string; status: string }
+
+export default function Requests() {
+  const [requests, setRequests] = useState<Request[]>([])
+  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [q, setQ] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const load = async () => {
+    setLoading(true); setError('')
+    if (!supabase) { setError('لم يتم إعداد اتصال Supabase.'); setLoading(false); return }
+    const [{ data: rs, error: re }, { data: cs }] = await Promise.all([
+      supabase.from('requests').select('id,request_type,exact_type,status,created_at').order('created_at', { ascending: false }),
+      supabase.from('candidates').select('id,request_id,status'),
+    ])
+    if (re) setError(re.message)
+    setRequests(rs || []); setCandidates(cs || []); setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  const filtered = requests.filter(r => `${r.request_type} ${r.exact_type} ${r.status}`.includes(q.trim()))
+
+  return <main className="min-h-screen" dir="rtl">
+    <header className="bg-[#09233f] text-white px-6 py-5"><div className="max-w-6xl mx-auto flex justify-between items-center"><div><div className="text-[#d4a72c] font-bold">البنية الاساسية للمقاولات</div><h1 className="text-xl font-bold">طلبات الموارد البشرية</h1></div><div className="flex gap-2"><button onClick={load} className="border border-white/20 rounded-xl px-3 py-2"><RefreshCw size={18}/></button><Link href="/requests/new" className="btn-gold rounded-xl px-4 py-2 font-bold flex gap-2 items-center"><Plus size={18}/> طلب جديد</Link></div></div></header>
+    <div className="max-w-6xl mx-auto p-6 md:p-10">
+      <div className="relative mb-6"><Search className="absolute right-4 top-3.5 text-slate-400" size={20}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="بحث في الطلبات..." className="input pr-12"/></div>
+      {error&&<div className="mb-5 bg-red-50 text-red-700 p-4 rounded-xl">{error}</div>}
+      {loading?<div className="card p-12 text-center text-slate-500">جاري تحميل الطلبات...</div>:filtered.length? <div className="space-y-4">{filtered.map(req=>{const count=candidates.filter(c=>c.request_id===req.id).length; return <Link key={req.id} href={`/requests/${req.id}`} className="card block p-6 hover:border-[#b88618]"><div className="flex flex-col md:flex-row md:items-center justify-between gap-5"><div><div className="flex gap-2 mb-2"><span className="bg-amber-100 text-[#8a6410] px-3 py-1 rounded-full text-xs font-bold">{req.request_type}</span><span className="bg-slate-100 px-3 py-1 rounded-full text-xs">{req.status}</span></div><h2 className="text-xl font-bold text-[#09233f]">{req.exact_type}</h2><p className="text-sm text-slate-500 mt-2">{count} مرشح • {new Date(req.created_at).toLocaleDateString('ar-SA')}</p></div><div className="flex items-center gap-3 text-[#b88618] font-bold">إدارة الطلب <ArrowLeft size={18}/></div></div></Link>})}</div>:<div className="card p-12 text-center text-slate-500">لا توجد طلبات حالياً. أنشئ أول طلب للبدء.</div>}
+      <div className="mt-8 grid sm:grid-cols-3 gap-4"><div className="card p-5"><div className="text-slate-500 text-sm">إجمالي الطلبات</div><div className="text-3xl font-bold text-[#09233f] mt-2">{requests.length}</div></div><div className="card p-5"><div className="text-slate-500 text-sm">إجمالي المرشحين</div><div className="text-3xl font-bold text-[#09233f] mt-2">{candidates.length}</div></div><div className="card p-5"><div className="text-slate-500 text-sm">الطلبات المفتوحة</div><div className="text-3xl font-bold text-[#09233f] mt-2">{requests.filter(r=>r.status==='مفتوح').length}</div></div></div>
+    </div>
+  </main>
+}
