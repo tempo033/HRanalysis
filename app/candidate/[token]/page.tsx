@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ENGINEERING_LEVELS } from '@/lib/engineering'
 
-export default function CandidatePage({ params }: { params: { token: string } }) {
+type CandidatePageProps = {
+  params: Promise<{ token: string }>
+}
+
+export default function CandidatePage({ params }: CandidatePageProps) {
+  const [token, setToken] = useState('')
   const [loading, setLoading] = useState(true)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
@@ -15,9 +20,13 @@ export default function CandidatePage({ params }: { params: { token: string } })
   const [form, setForm] = useState({ full_name: '', phone: '', email: '', city: '', nationality: '', degree: '', specialization: '', university: '', graduation_year: '', total_experience_years: '', saudi_experience_years: '', previous_experience: '', notes: '' })
 
   useEffect(() => {
+    let cancelled = false
     const load = async () => {
+      const resolved = await params
+      if (cancelled) return
+      setToken(resolved.token)
       if (!supabase) { setError('لم يتم إعداد الاتصال بقاعدة البيانات بعد.'); setLoading(false); return }
-      const { data: c, error: ce } = await supabase.from('candidates').select('*').eq('share_token', params.token).single()
+      const { data: c, error: ce } = await supabase.from('candidates').select('*').eq('share_token', resolved.token).single()
       if (ce || !c) { setError('رابط المرشح غير صحيح أو غير متاح.'); setLoading(false); return }
       const [{ data: r }, { data: reqs }, { data: old }] = await Promise.all([
         supabase.from('requests').select('*').eq('id', c.request_id).single(),
@@ -31,7 +40,8 @@ export default function CandidatePage({ params }: { params: { token: string } })
       setScores(map); setLoading(false)
     }
     load()
-  }, [params.token])
+    return () => { cancelled = true }
+  }, [params])
 
   const grouped = useMemo(() => requirements.reduce((a: any, r: any) => { (a[r.category] ||= []).push(r); return a }, {}), [requirements])
 
@@ -39,9 +49,9 @@ export default function CandidatePage({ params }: { params: { token: string } })
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError('')
-    if (!supabase || !candidate) return
+    if (!supabase || !candidate || !token) return
     if (!form.full_name || !form.phone) { setError('يرجى إدخال الاسم الكامل ورقم الجوال.'); return }
-    const { error: ue } = await supabase.from('candidates').update({ ...form, graduation_year: form.graduation_year ? Number(form.graduation_year) : null, total_experience_years: form.total_experience_years ? Number(form.total_experience_years) : null, saudi_experience_years: form.saudi_experience_years ? Number(form.saudi_experience_years) : null, status: 'أكمل البيانات', submitted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', candidate.id).eq('share_token', params.token)
+    const { error: ue } = await supabase.from('candidates').update({ ...form, graduation_year: form.graduation_year ? Number(form.graduation_year) : null, total_experience_years: form.total_experience_years ? Number(form.total_experience_years) : null, saudi_experience_years: form.saudi_experience_years ? Number(form.saudi_experience_years) : null, status: 'أكمل البيانات', submitted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', candidate.id).eq('share_token', token)
     if (ue) { setError('تعذر حفظ البيانات. حاول مرة أخرى.'); return }
     for (const r of requirements) {
       const value = scores[r.id] || { score: 0, evidence: '' }
