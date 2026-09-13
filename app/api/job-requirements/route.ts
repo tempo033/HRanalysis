@@ -1,30 +1,21 @@
 import { NextResponse } from 'next/server'
+import { getSuggestedRequirements } from '@/lib/request-requirements'
 
-const roleProfiles: Record<string, { name:string; category:string; required:boolean }[]> = {
-  'مهندس مشاريع': [
-    {name:'بكالوريوس هندسة مدنية أو تخصص هندسي مناسب',category:'مؤهل',required:true},{name:'خبرة في إدارة وتنفيذ مشاريع المقاولات',category:'خبرة',required:true},{name:'قراءة وفهم المخططات والمواصفات الفنية',category:'مهارة فنية',required:true},{name:'متابعة البرنامج الزمني ونسب الإنجاز',category:'إدارة',required:true},{name:'التنسيق مع الاستشاري والمالك والمقاولين',category:'إدارة',required:true},{name:'إعداد ومراجعة المستخلصات وحصر الأعمال',category:'مهارة فنية',required:true},{name:'إعداد ومتابعة طلبات المعلومات واعتمادات المواد',category:'مهارة فنية',required:false},{name:'إجادة AutoCAD وMicrosoft Excel',category:'برنامج هندسي',required:true},{name:'إجادة Primavera P6 أو MS Project',category:'برنامج هندسي',required:false},{name:'عضوية مهنية سارية لدى الهيئة السعودية للمهندسين',category:'اعتماد',required:true},{name:'معرفة كود البناء السعودي والمعايير الفنية ذات العلاقة',category:'مهارة فنية',required:false},{name:'القدرة على العمل في مواقع المشاريع داخل المملكة',category:'تشغيل',required:true}],
-  'مهندس مكتب فني': [
-    {name:'بكالوريوس هندسة مدنية أو معمارية حسب طبيعة المشروع',category:'مؤهل',required:true},{name:'خبرة في أعمال المكتب الفني بقطاع المقاولات',category:'خبرة',required:true},{name:'قراءة وتحليل المخططات والمواصفات وجداول الكميات',category:'مهارة فنية',required:true},{name:'إعداد ومراجعة Shop Drawings',category:'مهارة فنية',required:true},{name:'حصر الكميات Quantity Take-off ومراجعة BOQ',category:'مهارة فنية',required:true},{name:'إعداد ومراجعة المستخلصات وحصر الأعمال المنفذة',category:'مهارة فنية',required:true},{name:'إعداد As-Built Drawings وملفات التسليم',category:'مهارة فنية',required:true},{name:'إعداد RFIs والتنسيق مع الاستشاري والموقع',category:'مهارة فنية',required:true},{name:'إعداد ومراجعة Material Submittals',category:'مهارة فنية',required:false},{name:'إجادة AutoCAD وMicrosoft Excel',category:'برنامج هندسي',required:true},{name:'إجادة Revit أو BIM حسب التخصص',category:'برنامج هندسي',required:false},{name:'إجادة Primavera P6 أو MS Project',category:'برنامج هندسي',required:false},{name:'عضوية مهنية سارية لدى الهيئة السعودية للمهندسين',category:'اعتماد',required:true}],
-  'مهندس مشروع': [
-    {name:'بكالوريوس هندسة مدنية أو تخصص هندسي مناسب',category:'مؤهل',required:true},{name:'خبرة في تنفيذ مشاريع المقاولات بالموقع',category:'خبرة',required:true},{name:'قراءة وفهم المخططات والمواصفات الفنية',category:'مهارة فنية',required:true},{name:'متابعة أعمال المقاولين والعمالة بالموقع',category:'تشغيل',required:true},{name:'متابعة الجودة والاستلامات وطلبات الفحص',category:'جودة',required:true},{name:'متابعة المواد والاعتمادات الفنية',category:'مهارة فنية',required:true},{name:'إعداد التقارير اليومية والأسبوعية للمشروع',category:'إدارة',required:true},{name:'إعداد ومراجعة المستخلصات وحصر الكميات',category:'مهارة فنية',required:false},{name:'إجادة AutoCAD وExcel',category:'برنامج هندسي',required:true},{name:'معرفة Primavera P6 أو MS Project',category:'برنامج هندسي',required:false},{name:'عضوية مهنية سارية لدى الهيئة السعودية للمهندسين',category:'اعتماد',required:true},{name:'معرفة متطلبات السلامة وكود البناء السعودي',category:'سلامة',required:false}],
-  'مهندس مشتريات': [
-    {name:'بكالوريوس هندسة أو تخصص مناسب للمشتريات الإنشائية',category:'مؤهل',required:true},{name:'خبرة في مشتريات قطاع المقاولات والإنشاءات',category:'خبرة',required:true},{name:'معرفة مواد البناء والمواصفات الفنية',category:'مشتريات',required:true},{name:'إدارة الموردين والحصول على عروض الأسعار ومقارنتها',category:'مشتريات',required:true},{name:'التفاوض مع الموردين وتحسين الأسعار وشروط التوريد',category:'مشتريات',required:true},{name:'إدارة أوامر الشراء ومتابعة التوريد والتسليم',category:'مشتريات',required:true},{name:'التنسيق مع المكتب الفني والموقع والمستودعات',category:'إدارة',required:true},{name:'إجادة Microsoft Excel وOffice',category:'برنامج',required:true},{name:'معرفة إجراءات وعقود المشتريات والمقاولين',category:'مشتريات',required:false},{name:'مهارات قوية في التحليل والتفاوض والتواصل',category:'سلوك',required:true}],
-  'محاسب موقع': [
-    {name:'بكالوريوس محاسبة أو مالية',category:'مؤهل',required:true},{name:'خبرة سابقة في محاسبة مواقع أو مشاريع المقاولات',category:'خبرة',required:true},{name:'إجادة القيود والتسويات والحسابات والمصروفات',category:'محاسبة',required:true},{name:'متابعة عهد ومصروفات الموقع والنقدية',category:'محاسبة',required:true},{name:'إعداد التقارير المالية وتقارير المصروفات للمشروع',category:'محاسبة',required:true},{name:'إجادة Microsoft Excel',category:'برنامج',required:true},{name:'خبرة في أنظمة ERP أو البرامج المحاسبية',category:'برنامج',required:false},{name:'الدقة والسرية والنزاهة والانتباه للتفاصيل',category:'سلوك',required:true},{name:'القدرة على العمل داخل مواقع المشاريع والتنقل عند الحاجة',category:'تشغيل',required:false}],
-}
+type Requirement={name:string;category:string;required:boolean}
 
-function unique(items:{name:string;category:string;required:boolean}[]){const seen=new Set<string>();return items.filter(x=>{const k=x.name.trim().toLowerCase();if(!k||seen.has(k))return false;seen.add(k);return true})}
+function unique(items:Requirement[]){const seen=new Set<string>();return items.filter(x=>{const k=x.name.trim().toLowerCase();if(!k||seen.has(k))return false;seen.add(k);return true})}
 function stripHtml(value:string){return value.replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/\s+/g,' ').trim()}
-function extractOnline(html:string){
-  const text=stripHtml(html); const parts=text.split(/[.!؟:]+/); const keys=['بكالوريوس','خبرة','إجادة','إتقان','معرفة','مهارات','قراءة','حصر','مستخلص','مخططات','AutoCAD','Excel','Primavera','Revit','BIM','مشتريات','موردين','ERP','سلامة','engineer','requirements','qualifications','skills']
-  const out:{name:string;category:string;required:boolean}[]=[]
-  for(const raw of parts){const s=raw.trim();if(s.length<25||s.length>220)continue;if(!keys.some(k=>s.toLowerCase().includes(k.toLowerCase())))continue;out.push({name:s.replace(/^[•\-–—*\d.)]+\s*/,'').trim(),category:'متطلب من السوق',required:false})}
-  return out.slice(0,10)
+function extractOnline(html:string):Requirement[]{
+ const text=stripHtml(html);const parts=text.split(/[.!؟:]+/);const keys=['بكالوريوس','خبرة','إجادة','إتقان','معرفة','مهارات','قراءة','حصر','مستخلص','مخططات','AutoCAD','Excel','Primavera','Revit','BIM','مشتريات','موردين','ERP','سلامة','engineer','requirements','qualifications','skills']
+ const out:Requirement[]=[]
+ for(const raw of parts){const s=raw.trim();if(s.length<25||s.length>220)continue;if(!keys.some(k=>s.toLowerCase().includes(k.toLowerCase())))continue;out.push({name:s.replace(/^[•\-–—*\d.)]+\s*/,'').trim(),category:'متطلب من السوق',required:false})}
+ return out.slice(0,12)
 }
 
 export async function GET(req:Request){
-  const {searchParams}=new URL(req.url);const job=(searchParams.get('job')||'').trim();const type=(searchParams.get('type')||'توظيف').trim();if(!job)return NextResponse.json({requirements:[],source:'none'})
-  let online:{name:string;category:string;required:boolean}[]=[]
-  try{const q=encodeURIComponent(`${job} Saudi Arabia construction job requirements qualifications skills`);const response=await fetch(`https://html.duckduckgo.com/html/?q=${q}`,{headers:{'User-Agent':'Mozilla/5.0 HRanalysis/1.0'},cache:'no-store'});if(response.ok)online=extractOnline(await response.text())}catch{}
-  return NextResponse.json({requirements:unique([...(roleProfiles[job]||[]),...online]),source:online.length?'library+web':'library',searchedJob:job,searchedType:type})
+ const {searchParams}=new URL(req.url);const job=(searchParams.get('job')||'').trim();const type=(searchParams.get('type')||'توظيف').trim();
+ if(!job)return NextResponse.json({requirements:[],source:'none',searchedJob:'',searchedType:type})
+ const local:Requirement[]=getSuggestedRequirements(job).map(x=>({name:x.name,category:x.category,required:Boolean(x.required)}));let online:Requirement[]=[]
+ try{const q=encodeURIComponent(`${job} Saudi Arabia construction job requirements qualifications skills`);const response=await fetch(`https://html.duckduckgo.com/html/?q=${q}`,{headers:{'User-Agent':'Mozilla/5.0 HRanalysis/1.0'},cache:'no-store'});if(response.ok)online=extractOnline(await response.text())}catch{}
+ const merged=unique([...local,...online]);return NextResponse.json({requirements:merged,source:online.length?'library+web':'library',searchedJob:job,searchedType:type})
 }
