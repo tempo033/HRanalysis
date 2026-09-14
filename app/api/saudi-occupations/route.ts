@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { JOB_TITLE_LIBRARY } from '@/lib/job-titles'
 
 export const dynamic = 'force-dynamic'
 
@@ -53,52 +52,44 @@ async function get(url: string) {
   return response.text()
 }
 
+const fallbackNames = [
+  'مدير مشاريع','مدير مشروع','مدير الموارد البشرية','مدير المشتريات','مدير مالي','مدير جودة','مدير سلامة وصحة مهنية','مدير تشغيل','مدير مستودعات',
+  'مهندس مدني','مهندس معماري','مهندس إنشائي','مهندس كهرباء','مهندس ميكانيكا','مهندس تكييف وتبريد','مهندس سباكة','مهندس طرق','مهندس مياه وصرف صحي','مهندس تخطيط','مهندس تكلفة','مهندس عقود','مهندس مكتب فني','مهندس موقع','مهندس جودة','مهندس سلامة','مهندس مشتريات','مهندس مبيعات','مهندس كميات','مهندس مساح','مهندس BIM',
+  'مساح','حاسب كميات','مراقب مدني','مراقب معماري','مراقب كهرباء','مراقب ميكانيكا','مشرف موقع','مشرف تشطيبات','مشرف كهرباء','مشرف ميكانيكا','مشرف سلامة','مشرف جودة','مشرف مستودع','مشرف حركة',
+  'محاسب','محاسب موقع','محاسب عام','محاسب تكاليف','محاسب رواتب','مراجع داخلي','أمين صندوق','أمين مستودع','موظف مشتريات','أخصائي مشتريات','أخصائي سلسلة إمداد','منسق مشتريات','منسق لوجستي','أخصائي عقود','مسؤول عقود','مسؤول موردين',
+  'أخصائي موارد بشرية','أخصائي توظيف','مسؤول توظيف','أخصائي رواتب','مسؤول شؤون موظفين','أخصائي تدريب وتطوير','منسق موارد بشرية','سكرتير','سكرتير مدير مشاريع','مساعد إداري','منسق إداري','مدخل بيانات','مسؤول وثائق','منسق وثائق','مراقب مستندات','موظف استقبال','خدمة عملاء',
+  'مصمم معماري','مصمم داخلي','مصمم جرافيك','مصمم جرافيك دعاية وإعلان','مصمم ثلاثي الأبعاد','مصمم UX/UI','مصور','محرر فيديو','أخصائي تسويق','مسوق','أخصائي تسويق رقمي','أخصائي مبيعات','ممثل مبيعات','مندوب مبيعات','أخصائي تطوير أعمال','مسؤول علاقات عامة','أخصائي فعاليات',
+  'مبرمج مواقع','مطور ويب','مطور تطبيقات','مطور برمجيات','مطور واجهات أمامية','مطور واجهات خلفية','مهندس بيانات','محلل بيانات','مسؤول قواعد بيانات','مسؤول أنظمة','مسؤول تقنية معلومات','أخصائي دعم فني','أخصائي أمن معلومات','محلل أمن سيبراني',
+  'سائق','سائق شاحنة','سائق نقل ثقيل','سائق حافلة','مشغل رافعة','مشغل حفار','مشغل شيول','مشغل بلدوزر','مشغل معدات ثقيلة','فني كهرباء','فني ميكانيكا','فني تكييف','فني سباكة','فني لحام','فني صيانة','فني شبكات','فني اتصالات','فني أجهزة','عامل موقع','عامل بناء','عامل تشطيبات','عامل مستودع','حارس أمن'
+]
+
 function fallback() {
-  return JOB_TITLE_LIBRARY.map((x: any, i: number) => ({
-    name: String(x.name || x.title || x.ar || x).trim(),
-    code: String(x.code || `LOCAL-${String(i + 1).padStart(4, '0')}`),
-  })).filter((x) => x.name)
+  return fallbackNames.map((name, i) => ({ name, code: `LOCAL-${String(i + 1).padStart(4, '0')}` }))
 }
 
 export async function GET() {
   try {
     const first = await get(source)
-    const categoryLinks = occupationLinks(first, source).filter((url) => !url.includes('?page='))
+    const categoryLinks = occupationLinks(first, source)
     const seeds = [...new Set([source, ...categoryLinks])]
-    const seedPages = await Promise.allSettled(seeds.slice(0, 20).map(get))
+    const seedResults = await Promise.allSettled(seeds.slice(0, 20).map(get))
     const pageUrls = new Set<string>(seeds)
-    const htmlPages = seedPages.flatMap((p) => p.status === 'fulfilled' ? [p.value] : [])
+    const seedPages = seedResults.flatMap((p) => p.status === 'fulfilled' ? [p.value] : [])
 
-    for (let i = 0; i < htmlPages.length; i++) {
-      for (const link of occupationLinks(htmlPages[i], seeds[i] || source)) pageUrls.add(link)
-    }
+    seedPages.forEach((html, index) => {
+      for (const link of occupationLinks(html, seeds[index] || source)) pageUrls.add(link)
+    })
 
-    // HRSD uses paginated occupation-category pages. Follow all discovered pagination
-    // links, while keeping a generous ceiling so the catalog is not silently truncated.
     const urls = [...pageUrls].slice(0, 350)
     const pages = await Promise.allSettled(urls.map(get))
     const occupations = pages.flatMap((p) => p.status === 'fulfilled' ? extract(p.value) : [])
-    const unique = [...new Map(occupations.map((x) => [x.code, x])).values()]
-      .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+    const unique = [...new Map(occupations.map((x) => [x.code, x])).values()].sort((a, b) => a.name.localeCompare(b.name, 'ar'))
 
     if (unique.length < 500) throw new Error(`HRSD catalog incomplete (${unique.length})`)
 
-    return NextResponse.json({
-      occupations: unique,
-      count: unique.length,
-      source,
-      sourceType: 'HRSD',
-      updated: new Date().toISOString(),
-    }, { headers: { 'Cache-Control': 'public, max-age=3600, s-maxage=86400' } })
+    return NextResponse.json({ occupations: unique, count: unique.length, source, sourceType: 'HRSD', updated: new Date().toISOString() }, { headers: { 'Cache-Control': 'public, max-age=3600, s-maxage=86400' } })
   } catch (error) {
     const occupations = fallback()
-    return NextResponse.json({
-      occupations,
-      count: occupations.length,
-      source,
-      sourceType: 'fallback-library',
-      warning: 'تعذر قراءة دليل الوزارة بالكامل؛ تم استخدام مكتبة المهن الاحتياطية دون خلط متطلبات الوظائف.',
-      error: error instanceof Error ? error.message : 'unknown',
-    }, { headers: { 'Cache-Control': 'public, max-age=900, s-maxage=3600' } })
+    return NextResponse.json({ occupations, count: occupations.length, source, sourceType: 'fallback-library', warning: 'تعذر قراءة دليل الوزارة بالكامل؛ تم استخدام القائمة الاحتياطية دون خلط متطلبات الوظائف.', error: error instanceof Error ? error.message : 'unknown' }, { headers: { 'Cache-Control': 'public, max-age=900, s-maxage=3600' } })
   }
 }
