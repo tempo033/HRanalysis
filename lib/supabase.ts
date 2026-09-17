@@ -1,15 +1,20 @@
 import { createClient } from '@supabase/supabase-js'
 
-// The public Supabase URL and publishable/anon key are safe to use in a browser
-// application. Environment variables remain the preferred configuration, while
-// these project defaults keep the app connected when a deployment has not yet
-// been configured with environment variables.
+// Prefer environment variables; fallback keeps local dev working if env is missing.
+// In production you MUST set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel.
 const url =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   'https://pdkdvaisggntdrvpxuur.supabase.co'
 
 const key =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  'sb_publishable_S-xxocuLz-FX_6HLaYhb0A_Avnr01AW'
+  ''
 
-export const supabase = createClient(url, key)
+// Create client even if key is empty to avoid crashing during build;
+// runtime queries will fail gracefully if not configured.
+export const supabase = createClient(url, key || 'public-anon-key-placeholder')
+
+// Helper to check if Supabase is configured
+export const isSupabaseConfigured = () => {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+}
