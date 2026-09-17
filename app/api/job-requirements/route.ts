@@ -1,121 +1,25 @@
 import { NextResponse } from 'next/server'
-import { getSuggestedRequirements } from '@/lib/request-requirements'
+import { GoogleGenAI } from '@google/genai'
+import { getSuggestedRequirements, REQUEST_REQUIREMENTS } from '@/lib/request-requirements'
 
 type Requirement = { name: string; category: string; required: boolean; source?: string }
 
-function unique(items: Requirement[]) {
-  const seen = new Set<string>()
-  return items.filter((x) => {
-    const key = x.name.trim().toLocaleLowerCase('ar')
-    if (!key || seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+function normalize(value: string) { return value.normalize('NFKC').replace(/[ًٌٍَُِّْـ]/g, '').replace(/[إأآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' ').trim().toLocaleLowerCase('ar') }
+function unique(items: Requirement[]) { const seen=new Set<string>(); return items.filter(x=>{const key=normalize(x.name);if(!key||seen.has(key))return false;seen.add(key);return true}) }
+function local(job:string):Requirement[]{ const direct=getSuggestedRequirements(job); if(direct.length)return direct.map(x=>({...x,required:Boolean(x.required),source:'مكتبة متطلبات الوظائف'})); const key=Object.keys(REQUEST_REQUIREMENTS).find(k=>normalize(k)===normalize(job)); return key?REQUEST_REQUIREMENTS[key].map(x=>({...x,required:Boolean(x.required),source:'مكتبة متطلبات الوظائف'})):[] }
+
+function fallback(job:string):Requirement[]{
+ const j=normalize(job)
+ const common:Requirement[]=[{name:'المؤهل العلمي المناسب لطبيعة الوظيفة',category:'مؤهل',required:true},{name:'خبرة عملية مرتبطة مباشرة بالمسمى الوظيفي',category:'خبرة',required:true},{name:'إجادة مهام الوظيفة الأساسية وفق الوصف الوظيفي',category:'مهارة فنية',required:true},{name:'الالتزام بالأنظمة والتعليمات وإجراءات الشركة',category:'تشغيل',required:true},{name:'القدرة على إعداد التقارير والمتابعة والتنسيق',category:'إدارة',required:false},{name:'إجادة استخدام الحاسب والبرامج المكتبية ذات الصلة',category:'برنامج',required:false}]
+ if(/مهندس|هندسي|مدني|معماري|كهرباء|ميكانيكا|تكييف|طرق|مياه|سلامة|جودة|مكتب فني|مساح|كميات/.test(j)) common.push({name:'قراءة وفهم المخططات والمواصفات الفنية المرتبطة بالتخصص',category:'مهارة فنية',required:true},{name:'AutoCAD وExcel أو البرامج الفنية المستخدمة في التخصص',category:'برنامج هندسي',required:false})
+ if(/مشتريات|مورد|سلسلة امداد|لوجست/.test(j)) common.push({name:'إدارة طلبات الشراء وعروض الأسعار ومقارنة الموردين',category:'مشتريات',required:true},{name:'التفاوض ومتابعة التوريد والاستلام',category:'مشتريات',required:true})
+ if(/محاسب|محاسبه|مالي|مالية|تكاليف/.test(j)) common.push({name:'إعداد القيود والتسويات والمطابقات والتقارير المالية',category:'محاسبة',required:true},{name:'إجادة Excel والأنظمة المحاسبية',category:'برنامج',required:true})
+ if(/موارد بشرية|توظيف|رواتب|شؤون موظفين|hr/.test(j)) common.push({name:'معرفة أنظمة العمل واللوائح السعودية وإجراءات الموارد البشرية',category:'موارد بشرية',required:true},{name:'إدارة ملفات الموظفين والعقود والإجازات والحضور',category:'موارد بشرية',required:true})
+ if(/مبيعات|تسويق|تطوير اعمال|علاقات عامة/.test(j)) common.push({name:'مهارات التواصل والتفاوض وإدارة العملاء',category:'مبيعات',required:true},{name:'تحقيق المستهدفات وإعداد تقارير المبيعات أو التسويق',category:'أداء',required:true})
+ if(/سائق|مشغل|عامل|فني/.test(j)) common.push({name:'خبرة في بيئة العمل والموقع المرتبط بالوظيفة',category:'خبرة',required:true},{name:'رخصة أو تصريح تشغيل ساري عند اشتراطه للوظيفة',category:'اعتماد',required:false})
+ return unique(common.map(x=>({...x,source:'مكتبة متطلبات مهنية احتياطية حسب عائلة المسمى'})))
 }
 
-function normalize(value: string) {
-  return value
-    .normalize('NFKC')
-    .replace(/[ًٌٍَُِّْـ]/g, '')
-    .replace(/[إأآ]/g, 'ا')
-    .replace(/ة/g, 'ه')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLocaleLowerCase('ar')
-}
+async function aiRequirements(job:string,type:string):Promise<Requirement[]>{ const apiKey=process.env.GEMINI_API_KEY;if(!apiKey)return[];try{const ai=new GoogleGenAI({apiKey});const prompt=`أنت خبير موارد بشرية في شركة مقاولات سعودية. أعد متطلبات مهنية دقيقة للمسمى المحدد فقط: "${job}". لا تستبدل المسمى بمهنة قريبة. نوع الطلب: "${type}". أرجع 6-10 متطلبات عربية مهنية بصيغة JSON array فقط، منها المؤهل والخبرة والمهارات والبرامج الخاصة بالمهنة عند الحاجة، واجعل 2-4 متطلبات أساسية required=true.`;const response=await ai.models.generateContent({model:'gemini-3.6-flash',contents:prompt});const text=(response.text||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/i,'').trim();const parsed=JSON.parse(text);if(!Array.isArray(parsed))return[];return parsed.map((x:any)=>({name:String(x.name||'').trim(),category:String(x.category||'عام').trim(),required:Boolean(x.required),source:'محرك المعايير المهنية الذكي'})).filter(x=>x.name.length>2)}catch{return[]}}
 
-function labelOf(value: any) {
-  return String(value?.preferredLabel || value?.title || value?.label || value?.prefLabel || '').trim()
-}
-
-function localRequirements(job: string, type: string) {
-  // Local data is allowed only when the requested title is an exact library key.
-  // We never use a related/nearby occupation as a substitute.
-  const direct = getSuggestedRequirements(job)
-  if (direct.length) return direct.map((x) => ({ ...x, required: Boolean(x.required), source: 'مكتبة المتطلبات للمسمى المحدد' }))
-  if (type !== 'توظيف') {
-    const exactRequestType = getSuggestedRequirements(type)
-    if (exactRequestType.length) return exactRequestType.map((x) => ({ ...x, required: Boolean(x.required), source: 'مكتبة نوع الطلب المحدد' }))
-  }
-  return []
-}
-
-async function escoRequirements(job: string): Promise<Requirement[]> {
-  try {
-    const searchUrl = `https://ec.europa.eu/esco/api/search?text=${encodeURIComponent(job)}&language=ar&type=occupation&limit=10&selectedVersion=latest&viewObsolete=false`
-    const searchResponse = await fetch(searchUrl, { headers: { Accept: 'application/json' }, next: { revalidate: 86400 } })
-    if (!searchResponse.ok) return []
-    const searchData = await searchResponse.json()
-    const results = Array.isArray(searchData?.results) ? searchData.results : Array.isArray(searchData) ? searchData : []
-    if (!results.length) return []
-
-    const wanted = normalize(job)
-    const exact = results.find((item: any) => normalize(labelOf(item)) === wanted)
-    if (!exact?.uri) return []
-
-    const occupationLabel = labelOf(exact)
-    const resourceUrl = `https://ec.europa.eu/esco/api/resource/occupation?uri=${encodeURIComponent(exact.uri)}&language=ar&selectedVersion=latest`
-    const resourceResponse = await fetch(resourceUrl, { headers: { Accept: 'application/json' }, next: { revalidate: 86400 } })
-    if (!resourceResponse.ok) return []
-    const resource = await resourceResponse.json()
-
-    const essential = Array.isArray(resource?.hasEssentialSkill) ? resource.hasEssentialSkill : []
-    const optional = Array.isArray(resource?.hasOptionalSkill) ? resource.hasOptionalSkill : []
-    const skills = [...essential.map((skill: any) => ({ skill, required: true })), ...optional.map((skill: any) => ({ skill, required: false }))]
-
-    const requirements = await Promise.all(skills.slice(0, 30).map(async ({ skill, required }) => {
-      if (typeof skill === 'object') {
-        const label = labelOf(skill)
-        return label ? { name: label, category: required ? 'مهارة أساسية للمهنة' : 'مهارة اختيارية للمهنة', required, source: 'ESCO — المهنة المطابقة تمامًا' } : null
-      }
-      if (typeof skill !== 'string' || !skill.includes('esco')) return null
-      try {
-        const skillUrl = `https://ec.europa.eu/esco/api/resource/skill?uri=${encodeURIComponent(skill)}&language=ar&selectedVersion=latest`
-        const response = await fetch(skillUrl, { headers: { Accept: 'application/json' }, next: { revalidate: 86400 } })
-        if (!response.ok) return null
-        const data = await response.json()
-        const label = labelOf(data)
-        return label ? { name: label, category: required ? 'مهارة أساسية للمهنة' : 'مهارة اختيارية للمهنة', required, source: 'ESCO — المهنة المطابقة تمامًا' } : null
-      } catch { return null }
-    }))
-
-    return unique(requirements.filter(Boolean) as Requirement[]).map((x) => ({ ...x, source: `${x.source} (${occupationLabel})` }))
-  } catch {
-    return []
-  }
-}
-
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url)
-  const job = (searchParams.get('job') || '').trim()
-  const type = (searchParams.get('type') || 'توظيف').trim()
-  const occupationCode = (searchParams.get('code') || '').trim()
-
-  if (!job) return NextResponse.json({ requirements: [], source: 'none', searchedJob: '', searchedType: type })
-
-  const local = localRequirements(job, type)
-  if (local.length) {
-    return NextResponse.json({
-      requirements: unique(local),
-      source: 'exact-local-profile',
-      searchedJob: job,
-      occupationCode,
-      searchedType: type,
-      matchedOccupation: job,
-      note: 'تم استخدام متطلبات المسمى المحدد فقط.'
-    })
-  }
-
-  const external = await escoRequirements(job)
-  return NextResponse.json({
-    requirements: external,
-    source: external.length ? 'exact-occupation-ESCO' : 'none',
-    searchedJob: job,
-    occupationCode,
-    searchedType: type,
-    matchedOccupation: external.length ? job : null,
-    note: external.length
-      ? 'تم تحميل متطلبات المهنة المطابقة تمامًا فقط؛ لا يتم دمج متطلبات وظائف مشابهة.'
-      : 'لم يتم العثور على ملف مهنة مطابق تمامًا. أضف المتطلبات يدويًا بدل استخدام وظيفة مشابهة.'
-  })
-}
+export async function GET(req:Request){ const {searchParams}=new URL(req.url);const job=(searchParams.get('job')||'').trim();const type=(searchParams.get('type')||'توظيف').trim();const occupationCode=(searchParams.get('code')||'').trim();if(!job)return NextResponse.json({requirements:[],source:'none'});const exact=local(job);if(exact.length)return NextResponse.json({requirements:unique(exact),source:'exact-local-profile',searchedJob:job,occupationCode,searchedType:type,matchedOccupation:job});const generated=await aiRequirements(job,type);if(generated.length)return NextResponse.json({requirements:unique(generated),source:'ai-exact-occupation-profile',searchedJob:job,occupationCode,searchedType:type,matchedOccupation:job});const backup=fallback(job);return NextResponse.json({requirements:backup,source:'professional-family-fallback',searchedJob:job,occupationCode,searchedType:type,matchedOccupation:job,note:'تم تحميل متطلبات مهنية احتياطية مرتبطة بعائلة المسمى المحدد، دون استخدام متطلبات وظيفة أخرى.'}) }
